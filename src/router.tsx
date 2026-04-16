@@ -23,32 +23,69 @@ function AuthProvider() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        const { data } = await supabase
-          .from('profiles').select('*').eq('id', session.user.id).maybeSingle()
-        setProfile(data)
-      }
-      setLoading(false)
-      setReady(true)
-    })
+    let mounted = true
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+    const boot = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!mounted) return
+
         setUser(session?.user ?? null)
+        setLoading(false)
+        setReady(true)
+
         if (session?.user) {
           const { data } = await supabase
-            .from('profiles').select('*').eq('id', session.user.id).maybeSingle()
-          setProfile(data)
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle()
+
+          if (!mounted) return
+          setProfile(data ?? null)
         } else {
           setProfile(null)
         }
+      } catch {
+        if (!mounted) return
+        setUser(null)
+        setProfile(null)
         setLoading(false)
+        setReady(true)
       }
-    )
-    return () => subscription.unsubscribe()
-  }, [])
+    }
+
+    void boot()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return
+
+      setUser(session?.user ?? null)
+      setLoading(false)
+
+      if (!session?.user) {
+        setProfile(null)
+        return
+      }
+
+      setTimeout(async () => {
+        if (!mounted) return
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle()
+
+        if (!mounted) return
+        setProfile(data ?? null)
+      }, 0)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [setLoading, setProfile, setUser])
 
   if (!ready) return (
     <AppShell>

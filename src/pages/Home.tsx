@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout'
 import { Button } from '@/components/ui'
-import { useAuth } from '@/hooks/useAuth'
+import { getPreferredNameValue, useAuth } from '@/hooks/useAuth'
 
 export default function Home() {
   const navigate = useNavigate()
@@ -53,7 +53,7 @@ export default function Home() {
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-ink-400">
-                مرحباً، <span className="text-gold font-semibold">{profile?.username ?? 'لاعب'}</span>
+                مرحباً، <span className="text-gold font-semibold">{profile?.username ?? getPreferredNameValue() ?? 'لاعب'}</span>
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <Button variant="primary" onClick={() => navigate('/create')} className="w-full">

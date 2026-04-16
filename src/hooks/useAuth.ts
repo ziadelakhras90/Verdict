@@ -4,53 +4,86 @@ import { useAuthStore } from '@/stores/authStore'
 
 const PREFERRED_NAME_KEY = 'courthouse-preferred-name'
 
+async function safeFetchProfile(userId: string) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data ?? null
+}
+
+export function getPreferredNameValue() {
+  return localStorage.getItem(PREFERRED_NAME_KEY) ?? ''
+}
+
 export function useAuth() {
   const { user, profile, loading, setUser, setProfile, setLoading } = useAuthStore()
 
   useEffect(() => {
     let mounted = true
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return
-      setUser(session?.user ?? null)
-      if (session?.user) await fetchProfile(session.user.id)
-      else setLoading(false)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+    const syncSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
         if (!mounted) return
+
         setUser(session?.user ?? null)
-        if (session?.user) await fetchProfile(session.user.id)
-        else {
+        setLoading(false)
+
+        if (session?.user) {
+          try {
+            const profileData = await safeFetchProfile(session.user.id)
+            if (!mounted) return
+            setProfile(profileData)
+          } catch {
+            if (!mounted) return
+            setProfile(null)
+          }
+        } else {
           setProfile(null)
-          setLoading(false)
         }
+      } catch {
+        if (!mounted) return
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
       }
-    )
+    }
+
+    void syncSession()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return
+
+      setUser(session?.user ?? null)
+      setLoading(false)
+
+      if (!session?.user) {
+        setProfile(null)
+        return
+      }
+
+      setTimeout(async () => {
+        if (!mounted) return
+        try {
+          const profileData = await safeFetchProfile(session.user.id)
+          if (!mounted) return
+          setProfile(profileData)
+        } catch {
+          if (!mounted) return
+          setProfile(null)
+        }
+      }, 0)
+    })
 
     return () => {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [])
-
-  async function fetchProfile(userId: string) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle()
-
-    if (error) {
-      setProfile(null)
-      setLoading(false)
-      throw error
-    }
-
-    setProfile(data ?? null)
-    setLoading(false)
-  }
+  }, [setLoading, setProfile, setUser])
 
   async function enterAsGuest(username: string) {
     const trimmed = username.trim()
@@ -94,7 +127,7 @@ export function useAuth() {
   }
 
   function getPreferredName() {
-    return localStorage.getItem(PREFERRED_NAME_KEY) ?? ''
+    return getPreferredNameValue()
   }
 
   async function signOut() {
