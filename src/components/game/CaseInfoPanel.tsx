@@ -1,0 +1,53 @@
+import type { PublicCaseInfo } from '@/lib/types'
+import { CATEGORY_LABELS } from '@/lib/types'
+import { Badge } from '@/components/ui'
+import { cn } from '@/lib/utils'
+
+interface CaseInfoPanelProps {
+  caseInfo: PublicCaseInfo
+  compact?: boolean
+}
+
+const DIFFICULTY_STARS = ['', '★', '★★', '★★★']
+
+export function CaseInfoPanel({ caseInfo, compact = false }: CaseInfoPanelProps) {
+  return (
+    <div className={cn('space-y-3', compact ? '' : 'card-glass rounded-2xl p-5')}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="label-sm mb-1">القضية الحالية</p>
+          <h2 className={cn('font-display text-gold', compact ? 'text-lg' : 'text-2xl')}>
+            {caseInfo.title}
+          </h2>
+        </div>
+        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+          <Badge
+            label={CATEGORY_LABELS[caseInfo.category] ?? caseInfo.category}
+            color="gold"
+          />
+          <span className="text-gold/60 text-sm" title={`صعوبة ${caseInfo.difficulty}`}>
+            {DIFFICULTY_STARS[caseInfo.difficulty ?? 1]}
+          </span>
+        </div>
+      </div>
+
+      <p className={cn('text-parch-300 leading-relaxed', compact ? 'text-xs' : 'text-sm')}>
+        {caseInfo.public_summary}
+      </p>
+
+      {!compact && Array.isArray(caseInfo.public_facts) && caseInfo.public_facts.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          <p className="label-sm">الحقائق المُعلَنة</p>
+          <ul className="space-y-1">
+            {(caseInfo.public_facts as string[]).map((fact, i) => (
+              <li key={i} className="flex gap-2 text-sm text-parch-300">
+                <span className="text-gold/50 select-none mt-0.5">◆</span>
+                <span>{fact}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
