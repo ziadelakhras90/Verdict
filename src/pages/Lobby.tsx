@@ -78,7 +78,7 @@ export default function Lobby() {
     setStartLoading(true)
     try {
       await startGame(roomId)
-      // useRoomGuard will redirect to /card when status becomes 'starting'
+      await fetchAll()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'فشل بدء اللعبة')
       setStartLoading(false)
