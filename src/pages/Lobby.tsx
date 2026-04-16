@@ -17,13 +17,14 @@ export default function Lobby() {
   const navigate       = useNavigate()
   const currentUserId  = useCurrentUser()
   const toast          = useToast()
-  useRoom(roomId)
+  const { fetchAll }   = useRoom(roomId)
   // When status changes away from 'waiting', useRoomGuard redirects automatically
   useRoomGuard(roomId, 'waiting')
 
-  const room        = useRoomStore(s => s.room)
-  const players     = useRoomStore(s => s.players)
-  const isConnected = useRoomStore(s => s.isConnected)
+  const room         = useRoomStore(s => s.room)
+  const players      = useRoomStore(s => s.players)
+  const isConnected  = useRoomStore(s => s.isConnected)
+  const updatePlayer = useRoomStore(s => s.updatePlayer)
 
   const [startLoading, setStartLoading] = useState(false)
   const [readyLoading, setReadyLoading] = useState(false)
@@ -52,11 +53,24 @@ export default function Lobby() {
   }
 
   async function handleReady() {
-    if (!roomId || !me) return
+    if (!roomId || !me || !currentUserId) return
+
+    const nextReady = !me.is_ready
     setReadyLoading(true)
-    try { await setReady(roomId, !me.is_ready) }
-    catch (err) { toast.error(err instanceof Error ? err.message : 'خطأ') }
-    finally { setReadyLoading(false) }
+
+    // optimistic update so the UI changes immediately even if realtime is delayed
+    updatePlayer(currentUserId, { is_ready: nextReady })
+
+    try {
+      await setReady(roomId, nextReady)
+      await fetchAll()
+    } catch (err) {
+      // rollback on failure
+      updatePlayer(currentUserId, { is_ready: me.is_ready })
+      toast.error(err instanceof Error ? err.message : 'خطأ')
+    } finally {
+      setReadyLoading(false)
+    }
   }
 
   async function handleStart() {
