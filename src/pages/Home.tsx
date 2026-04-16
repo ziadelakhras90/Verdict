@@ -44,10 +44,10 @@ export default function Home() {
           {!user ? (
             <div className="space-y-3">
               <Button variant="primary" size="lg" className="w-full" onClick={() => navigate('/auth')}>
-                ابدأ اللعب
+                ادخل باسمك
               </Button>
               <p className="text-xs text-ink-500">
-                تسجيل مجاني — لا يلزم بريد إلكتروني للعب الفوري
+                بدون حسابات — اكتب اسمك وابدأ فورًا
               </p>
             </div>
           ) : (

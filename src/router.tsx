@@ -27,7 +27,7 @@ function AuthProvider() {
       setUser(session?.user ?? null)
       if (session?.user) {
         const { data } = await supabase
-          .from('profiles').select('*').eq('id', session.user.id).single()
+          .from('profiles').select('*').eq('id', session.user.id).maybeSingle()
         setProfile(data)
       }
       setLoading(false)
@@ -39,7 +39,7 @@ function AuthProvider() {
         setUser(session?.user ?? null)
         if (session?.user) {
           const { data } = await supabase
-            .from('profiles').select('*').eq('id', session.user.id).single()
+            .from('profiles').select('*').eq('id', session.user.id).maybeSingle()
           setProfile(data)
         } else {
           setProfile(null)
