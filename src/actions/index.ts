@@ -1,6 +1,18 @@
 import { supabase, callEdgeFunction } from '@/lib/supabase'
 import type { VerdictRow, VerdictValue } from '@/lib/types'
 
+type RoomRpcResponse = {
+  id: string
+  room_code: string
+  host_id: string
+  status: string
+  current_session: number
+  session_duration_seconds: number
+  max_players: number
+  created_at: string
+  updated_at: string
+}
+
 // ─── createRoom (atomic RPC) ─────────────────────
 export async function createRoom(opts: {
   maxPlayers?: number
@@ -11,8 +23,12 @@ export async function createRoom(opts: {
     p_session_duration_seconds: opts.sessionDurationSeconds ?? 180,
   })
 
-  if (error) throw error
-  return data
+  if (error) throw new Error(error.message)
+  if (!data || typeof data !== 'object' || !('id' in data) || !data.id) {
+    throw new Error('لم يتم إنشاء الغرفة')
+  }
+
+  return data as RoomRpcResponse
 }
 
 // ─── joinRoom (atomic RPC) ───────────────────────
@@ -21,8 +37,12 @@ export async function joinRoom(roomCode: string) {
     p_room_code: roomCode.toUpperCase().trim(),
   })
 
-  if (error) throw error
-  return data
+  if (error) throw new Error(error.message)
+  if (!data || typeof data !== 'object' || !('id' in data) || !data.id) {
+    throw new Error('تعذر الانضمام إلى الغرفة')
+  }
+
+  return data as RoomRpcResponse
 }
 
 // ─── setReady ─────────────────────────────────────
