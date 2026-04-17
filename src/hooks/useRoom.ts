@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { RealtimeChannel, RealtimePostgresChangesPayload, RealtimeStatus } from '@supabase/supabase-js'
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { useRoomStore } from '@/stores/roomStore'
 import type { RoomStore } from '@/stores/roomStore'
 import type { GameRoom, RoomPlayer, GameEvent, PublicCaseInfo } from '@/lib/types'
@@ -14,6 +14,8 @@ import {
 } from '@/lib/roomSync'
 
 const POLL_INTERVAL_MS = 2500
+
+type RealtimeSubscribeStatus = 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR'
 
 export function useRoom(roomId: string | undefined) {
   const {
@@ -141,7 +143,7 @@ export function useRoom(roomId: string | undefined) {
         addEvent(ev)
       })
 
-      .subscribe((status: RealtimeStatus) => {
+      .subscribe((status: RealtimeSubscribeStatus) => {
         setConnected(status === 'SUBSCRIBED')
       })
 
