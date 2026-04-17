@@ -80,6 +80,7 @@ export default function JudgePanel() {
     setSubmitting(true)
     try {
       await submitVerdict(roomId, selectedV)
+      await fetchAll()
       setShowVerdict(false)
       toast.success('صدر الحكم')
     } catch (err) {

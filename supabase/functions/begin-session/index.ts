@@ -5,6 +5,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
+function adminClient() {
+  const serviceKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  return createClient(Deno.env.get('SUPABASE_URL')!, serviceKey!)
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -23,10 +28,7 @@ Deno.serve(async (req: Request) => {
     const { roomId } = await req.json()
     if (!roomId) throw new Error('roomId is required')
 
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    const admin = adminClient()
 
     const { data: room, error: roomErr } = await admin
       .from('game_rooms').select('*').eq('id', roomId).single()
@@ -42,22 +44,23 @@ Deno.serve(async (req: Request) => {
       .eq('id', roomId)
     if (updateErr) throw updateErr
 
-    // Announce session start
     await admin.from('game_events').insert({
-      room_id: roomId, player_id: null, event_type: 'system',
-      session_num: 1, content: 'انطلقت المحاكمة — الجلسة الأولى تبدأ الآن',
+      room_id: roomId,
+      player_id: null,
+      event_type: 'system',
+      session_num: 1,
+      content: 'انطلقت المحاكمة — الجلسة الأولى تبدأ الآن',
     })
 
-    return new Response(
-      JSON.stringify({ ok: true, session_ends_at: sessionEndsAt }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ ok: true, session_ends_at: sessionEndsAt }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[begin-session]', msg)
-    return new Response(
-      JSON.stringify({ ok: false, error: msg }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ ok: false, error: msg }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 })

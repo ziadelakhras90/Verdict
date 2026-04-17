@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
 
     const admin = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
     const { data: room, error: roomErr } = await admin
@@ -159,7 +159,7 @@ Deno.serve(async (req: Request) => {
 
     const { error: finishErr } = await admin
       .from('game_rooms')
-      .update({ status: 'finished', session_ends_at: null })
+      .update({ status: 'reveal', session_ends_at: null })
       .eq('id', roomId)
     if (finishErr) throw new Error('Failed to finish room: ' + finishErr.message)
 

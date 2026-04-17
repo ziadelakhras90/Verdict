@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRoomStore } from '@/stores/roomStore'
-import type { GameRoom, RoomPlayer, GameEvent, PublicCaseInfo } from '@/lib/types'
+import type { GameRoom, RoomPlayer, GameEvent, PublicCaseInfo, RoleCard, GameResult } from '@/lib/types'
 
 const POLL_INTERVAL_MS = 2500
 
@@ -11,13 +11,19 @@ export function useRoom(roomId: string | undefined) {
     setPlayers, upsertPlayer, updatePlayer,
     addEvent, setEvents,
     setCaseInfo,
+    setMyCard,
+    setResults,
+    setRevealData,
     setConnected, reset,
   } = useRoomStore()
 
   const fetchAll = useCallback(async () => {
     if (!roomId) return
 
-    const [roomRes, playersRes, eventsRes] = await Promise.all([
+    const { data: authData } = await supabase.auth.getUser()
+    const currentUserId = authData.user?.id ?? null
+
+    const [roomRes, playersRes, eventsRes, cardRes, verdictRes, resultsRes] = await Promise.all([
       supabase.from('game_rooms').select('*').eq('id', roomId).single(),
       supabase.from('room_players')
         .select('*, profiles(username, avatar_url)')
@@ -26,6 +32,11 @@ export function useRoom(roomId: string | undefined) {
         .select('*, profiles(username)')
         .eq('room_id', roomId)
         .order('created_at', { ascending: true }),
+      currentUserId
+        ? supabase.from('player_role_data').select('*').eq('room_id', roomId).eq('player_id', currentUserId).maybeSingle()
+        : Promise.resolve({ data: null } as { data: RoleCard | null }),
+      supabase.from('verdicts').select('*').eq('room_id', roomId).maybeSingle(),
+      supabase.from('game_results').select('*, profiles(username)').eq('room_id', roomId),
     ])
 
     if (roomRes.data) {
@@ -42,7 +53,15 @@ export function useRoom(roomId: string | undefined) {
 
     if (playersRes.data) setPlayers(playersRes.data as RoomPlayer[])
     if (eventsRes.data) setEvents(eventsRes.data as GameEvent[])
-  }, [roomId, setRoom, setPlayers, setEvents, setCaseInfo])
+    if (cardRes?.data) setMyCard(cardRes.data as RoleCard)
+    if (verdictRes?.data?.actual_verdict && verdictRes?.data?.hidden_truth) {
+      setRevealData({
+        actual_verdict: verdictRes.data.actual_verdict,
+        hidden_truth: verdictRes.data.hidden_truth,
+      })
+    }
+    if (resultsRes?.data) setResults(resultsRes.data as GameResult[])
+  }, [roomId, setRoom, setPlayers, setEvents, setCaseInfo, setMyCard, setResults, setRevealData])
 
   useEffect(() => {
     if (!roomId) return
