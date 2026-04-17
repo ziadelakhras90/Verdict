@@ -6,17 +6,19 @@ import { useRoomStore } from '@/stores/roomStore'
 import { useRoomGuard } from '@/hooks/useRoomGuard'
 import { useSessionTimer } from '@/hooks/useSessionTimer'
 import { useToast } from '@/hooks/useToast'
-import { submitEvent } from '@/actions'
+import { fetchMyRoleCard, submitEvent } from '@/actions'
 import { AppShell } from '@/components/layout'
 import { Button, Badge, StatusDot } from '@/components/ui'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 import { EventFeed } from '@/components/game/EventFeed'
 import { SessionTimer } from '@/components/game/SessionTimer'
 import { CaseInfoPanel } from '@/components/game/CaseInfoPanel'
+import { RoleSummaryPanel } from '@/components/game/RoleSummaryPanel'
 import { supabase } from '@/lib/supabase'
 import { ROLE_LABELS, SESSION_LABELS } from '@/lib/types'
-import type { Role, PublicCaseInfo } from '@/lib/types'
+import type { Role, PublicCaseInfo, RoleCard } from '@/lib/types'
 import { cn, normalizeErrorMessage } from '@/lib/utils'
+import { SessionExpiredError } from '@/lib/sessionEvent'
 
 type EvType = 'statement' | 'question' | 'objection'
 
@@ -44,27 +46,35 @@ export default function Session() {
   const [evType, setEvType]       = useState<EvType>('statement')
   const [sending, setSending]     = useState(false)
   const [caseInfo, setCaseInfo]   = useState<PublicCaseInfo | null>(null)
+  const [roleCard, setRoleCard]   = useState<RoleCard | null>(null)
   const [showCase, setShowCase]   = useState(false)
+  const [showRole, setShowRole]   = useState(false)
   const [warnedUrgent, setWarnedUrgent] = useState(false)
+  const [warnedExpired, setWarnedExpired] = useState(false)
   const lastSessionRef = useRef<number | null>(null)
 
   const me      = players.find(p => p.player_id === currentUserId)
   const isJudge = me?.role === 'judge'
   const charLeft = 300 - text.length
+  const canSend = !!roomId && !!room && !sending && !isExpired && text.trim().length > 0
 
-  // Judge gets redirected to their special panel
   useEffect(() => {
     if (isJudge && roomId) navigate(`/room/${roomId}/judge`, { replace: true })
-  }, [isJudge, roomId])
+  }, [isJudge, roomId, navigate])
 
-  // Fetch case info once
+  useEffect(() => {
+    if (!roomId || !currentUserId) return
+    fetchMyRoleCard(roomId)
+      .then(setRoleCard)
+      .catch(() => void 0)
+  }, [roomId, currentUserId])
+
   useEffect(() => {
     if (!room?.case_id || caseInfo) return
     supabase.from('public_case_info').select('*').eq('id', room.case_id).single()
       .then(({ data }) => { if (data) setCaseInfo(data as PublicCaseInfo) })
-  }, [room?.case_id])
+  }, [room?.case_id, caseInfo])
 
-  // Reset composer when the session changes to avoid sending text to the wrong round
   useEffect(() => {
     if (!room) return
 
@@ -77,44 +87,69 @@ export default function Session() {
       setText('')
       setEvType('statement')
       setShowCase(false)
+      setShowRole(false)
       setWarnedUrgent(false)
+      setWarnedExpired(false)
       lastSessionRef.current = room.current_session
     }
-  }, [room?.current_session])
+  }, [room])
 
-  // Warn once when urgent
   useEffect(() => {
     if (isUrgent && !warnedUrgent) {
       toast.warn('تبقّى 30 ثانية على انتهاء الجلسة')
       setWarnedUrgent(true)
     }
     if (!isUrgent) setWarnedUrgent(false)
-  }, [isUrgent])
+  }, [isUrgent, warnedUrgent, toast])
+
+  useEffect(() => {
+    if (isExpired && !warnedExpired) {
+      setText('')
+      toast.info('انتهى وقت الجلسة — تم إغلاق الإرسال')
+      setWarnedExpired(true)
+    }
+    if (!isExpired) setWarnedExpired(false)
+  }, [isExpired, warnedExpired, toast])
 
   async function handleSend() {
-    if (!roomId || !text.trim() || !room || sending || isExpired) return
+    if (!roomId || !room || sending) return
+
+    const trimmed = text.trim()
+    if (!trimmed) return
+
+    if (isExpired) {
+      toast.info('انتهى وقت الجلسة — لا يمكن إرسال مداخلات جديدة')
+      return
+    }
+
     setSending(true)
     try {
-      await submitEvent(roomId, room.current_session, text.trim(), evType)
+      await submitEvent(roomId, room.current_session, trimmed, evType, room.session_ends_at)
       setText('')
     } catch (err) {
-      toast.error(normalizeErrorMessage(err, 'فشل الإرسال'))
+      if (err instanceof SessionExpiredError) {
+        setText('')
+        toast.info(err.message)
+      } else {
+        toast.error(normalizeErrorMessage(err, 'فشل الإرسال'))
+      }
     } finally {
       setSending(false)
     }
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (!isExpired) void handleSend()
+    }
   }
 
   if (!room) return null
 
   return (
     <AppShell>
-      <div className="h-screen flex flex-col max-w-2xl mx-auto">
-
-        {/* Top bar */}
+      <div className="h-screen flex flex-col max-w-3xl mx-auto">
         <div className={cn(
           'flex items-center gap-3 px-4 py-3 border-b transition-colors duration-500',
           isUrgent ? 'border-blood/30 bg-blood/5' : 'border-gold/10'
@@ -130,6 +165,13 @@ export default function Session() {
           </div>
           <SessionTimer />
           <button
+            onClick={() => setShowRole(v => !v)}
+            className="text-xs text-ink-500 hover:text-gold border border-ink-700 hover:border-gold/40 px-2.5 py-1.5 rounded-lg transition-all"
+            title="عرض بطاقتك السرية"
+          >
+            🕵️
+          </button>
+          <button
             onClick={() => setShowCase(v => !v)}
             className="text-xs text-ink-500 hover:text-gold border border-ink-700 hover:border-gold/40 px-2.5 py-1.5 rounded-lg transition-all"
             title="عرض تفاصيل القضية"
@@ -138,14 +180,27 @@ export default function Session() {
           </button>
         </div>
 
-        {/* Collapsible case info */}
+        {(showRole && roleCard) && (
+          <div className="border-b border-gold/10 px-4 py-3 bg-ink-900/80 animate-fade-up">
+            <RoleSummaryPanel card={roleCard} compact />
+          </div>
+        )}
+
         {showCase && caseInfo && (
           <div className="border-b border-gold/10 px-4 py-3 bg-ink-900/60 animate-fade-up">
             <CaseInfoPanel caseInfo={caseInfo} compact />
           </div>
         )}
 
-        {/* Event feed */}
+        {!showRole && roleCard && (
+          <div className="px-4 pt-3">
+            <div className="rounded-xl border border-gold/10 bg-ink-900/50 px-3 py-2 text-xs text-parch-300 flex items-center justify-between gap-3">
+              <span>تذكير: أنت <strong className="text-gold">{ROLE_LABELS[roleCard.role]}</strong> — تحدّث من منظور دورك.</span>
+              <button onClick={() => setShowRole(true)} className="text-gold hover:text-gold/80 whitespace-nowrap">عرض البطاقة</button>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-hidden flex flex-col">
           <EventFeed events={events} currentSession={room.current_session} />
         </div>
@@ -153,12 +208,11 @@ export default function Session() {
         {isExpired && (
           <div className="px-4 py-2 bg-ink-800/80 border-t border-ink-700/40 text-center">
             <p className="text-xs text-ink-500 animate-pulse">
-              انتهى وقت الجلسة — انتظر تثبيت الانتقال للجلسة التالية
+              انتهى وقت الجلسة — تم إغلاق الإرسال، انتظر تثبيت الانتقال للجلسة التالية
             </p>
           </div>
         )}
 
-        {/* Input area */}
         <div className={cn(
           'border-t p-4 space-y-3 transition-colors duration-300',
           isExpired ? 'border-ink-800 bg-ink-900/60' : 'border-gold/10 bg-ink-900/80'
@@ -167,10 +221,12 @@ export default function Session() {
             {EV_OPTIONS.map(opt => (
               <button
                 key={opt.type}
-                onClick={() => setEvType(opt.type)}
+                onClick={() => !isExpired && setEvType(opt.type)}
+                disabled={isExpired}
                 className={cn(
                   'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-body',
                   'border rounded-lg transition-all duration-150',
+                  isExpired && 'opacity-40 cursor-not-allowed',
                   evType === opt.type
                     ? 'border-gold/50 bg-gold/10 text-gold'
                     : 'border-ink-700/50 text-ink-500 hover:border-ink-600'
@@ -188,7 +244,7 @@ export default function Session() {
               onChange={e => setText(e.target.value.slice(0, 300))}
               onKeyDown={onKeyDown}
               placeholder={isExpired ? 'الجلسة انتهت' : 'اكتب هنا... (Enter للإرسال، Shift+Enter لسطر جديد)'}
-              disabled={isExpired}
+              disabled={isExpired || sending}
               rows={2}
               className={cn(
                 'w-full bg-ink-800 border text-parch-100 px-3 py-2.5 rounded-xl',
@@ -213,10 +269,10 @@ export default function Session() {
             variant="primary"
             onClick={handleSend}
             loading={sending}
-            disabled={!text.trim() || isExpired}
+            disabled={!canSend}
             className="w-full"
           >
-            إرسال {evType === 'objection' ? '✋' : evType === 'question' ? '❓' : '🗣️'}
+            {isExpired ? 'انتهت الجلسة' : `إرسال ${evType === 'objection' ? '✋' : evType === 'question' ? '❓' : '🗣️'}`}
           </Button>
         </div>
       </div>

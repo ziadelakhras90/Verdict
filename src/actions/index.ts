@@ -1,5 +1,6 @@
 import { supabase, callEdgeFunction } from '@/lib/supabase'
-import type { ActiveRoomMembership, VerdictRow, VerdictValue } from '@/lib/types'
+import type { ActiveRoomMembership, RoleCard, VerdictRow, VerdictValue } from '@/lib/types'
+import { SessionExpiredError, isSessionExpiredResult } from '@/lib/sessionEvent'
 
 type RoomRpcResponse = {
   id: string
@@ -98,15 +99,20 @@ export async function submitEvent(
   sessionNum: number,
   content: string,
   eventType: 'statement' | 'question' | 'objection' = 'statement',
+  sessionEndsAt?: string | null,
 ) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const result = await callEdgeFunction<{
+    ok: boolean
+    code?: string
+    session_ends_at?: string | null
+    room_status?: string
+  }>('submit-event', { roomId, sessionNum, content, eventType, sessionEndsAt })
 
-  const { error } = await supabase
-    .from('game_events')
-    .insert({ room_id: roomId, player_id: user.id, event_type: eventType, session_num: sessionNum, content })
+  if (isSessionExpiredResult(result)) {
+    throw new SessionExpiredError()
+  }
 
-  if (error) throw error
+  return result
 }
 
 // ─── submitVerdict → Edge Function ────────────────
@@ -133,18 +139,19 @@ export async function revealTruth(roomId: string, expectedStatus: 'verdict' | 'r
 }
 
 // ─── fetchMyRoleCard ──────────────────────────────
-export async function fetchMyRoleCard(roomId: string) {
+export async function fetchMyRoleCard(roomId: string): Promise<RoleCard | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('player_role_data')
     .select('*')
     .eq('room_id', roomId)
     .eq('player_id', user.id)
-    .single()
+    .maybeSingle()
 
-  return data
+  if (error) throw error
+  return (data as RoleCard | null) ?? null
 }
 
 // ─── fetchResults ─────────────────────────────────
