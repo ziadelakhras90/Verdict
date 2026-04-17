@@ -21,6 +21,8 @@
    supabase/migrations/001_full_schema.sql   ← Schema + RLS + sample case
    supabase/migrations/002_more_cases.sql    ← قضيتان إضافيتان
    supabase/migrations/003_fix_status_constraint.sql  ← إصلاح constraint
+   supabase/migrations/004_hardening_and_finish_flow.sql  ← finish/reveal hardening
+   supabase/migrations/005_database_hardening.sql  ← DB constraints + unique indexes
    ```
 4. من **Project Settings → API** احفظ:
    - `Project URL`
@@ -46,6 +48,7 @@ supabase functions deploy start-game
 supabase functions deploy begin-session
 supabase functions deploy advance-session
 supabase functions deploy reveal-truth
+supabase functions deploy submit-verdict
 ```
 
 ### 5. النشر على Netlify
@@ -70,7 +73,7 @@ Session 1 → 2 → 3 (in_session)
    ↓ players post statements/questions/objections
    ↓ judge advances each session  [Edge: advance-session]
 Verdict Phase (verdict)
-   ↓ judge submits verdict  [DB direct]
+   ↓ judge submits verdict  [Edge: submit-verdict]
 Reveal Truth (reveal)
    ↓ host reveals truth  [Edge: reveal-truth] — computes winners
 Results (finished)
@@ -130,6 +133,29 @@ src/
 
 supabase/
 ├── config.toml
-├── functions/        start-game, begin-session, advance-session, reveal-truth
-└── migrations/       001 schema, 002 cases, 003 fix
+├── functions/        start-game, begin-session, advance-session, submit-verdict, reveal-truth
+└── migrations/       001 schema, 002 cases, 003 fix, 004 hardening, 005 db hardening
 ```
+
+---
+
+## Stability Improvements Included
+
+النسخة الحالية تتضمن تحسينات مهمة على الثبات والتعامل مع الـreconnect والـrace conditions:
+- Resume / reconnect flow من Home و Auth
+- Route guard موحد حسب حالة الغرفة ودور اللاعب
+- حماية من double-submit في العمليات الحساسة
+- Idempotency في Edge Functions الأساسية
+- تقليل flicker وstale data في `useRoom` و `roomStore`
+- Reveal / Results flow أكثر أمانًا عند تأخر البيانات
+- Database hardening عبر constraints و unique indexes
+
+---
+
+## Verification
+
+راجع ملف [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) قبل الإطلاق أو بعد أي تغييرات حساسة على Supabase / Edge Functions.
+
+## Testing
+
+See `TESTING.md` for the automated and manual test plan.
