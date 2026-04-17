@@ -61,7 +61,10 @@ export async function setReady(roomId: string, ready: boolean) {
 
 // ─── startGame → Edge Function ────────────────────
 export async function startGame(roomId: string) {
-  return callEdgeFunction('start-game', { roomId })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  return callEdgeFunction('start-game', { roomId, requesterId: user.id })
 }
 
 // ─── beginSession → Edge Function ─────────────────
@@ -71,7 +74,10 @@ export async function beginSession(roomId: string) {
 
 // ─── advanceSession → Edge Function ───────────────
 export async function advanceSession(roomId: string) {
-  return callEdgeFunction('advance-session', { roomId })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  return callEdgeFunction('advance-session', { roomId, requesterId: user.id })
 }
 
 // ─── submitEvent ──────────────────────────────────

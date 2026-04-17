@@ -23,7 +23,7 @@ export default function JudgePanel() {
   const navigate       = useNavigate()
   const currentUserId  = useCurrentUser()
   const toast          = useToast()
-  useRoom(roomId)
+  const { fetchAll }   = useRoom(roomId)
   useRoomGuard(roomId, ['in_session', 'verdict'])
 
   const room     = useRoomStore(s => s.room)
@@ -64,6 +64,7 @@ export default function JudgePanel() {
     setAdvancing(true)
     try {
       await advanceSession(roomId)
+      await fetchAll()
       const next = (room?.current_session ?? 0) + 1
       if (next > 3) toast.info('انتهت الجلسات — أصدر حكمك')
       else toast.success(`انتقلنا للجلسة ${next}`)
