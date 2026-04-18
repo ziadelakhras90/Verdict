@@ -96,19 +96,27 @@ export default function Session() {
 
   useEffect(() => {
     if (isUrgent && !warnedUrgent) {
-      toast.warn('تبقّى 30 ثانية على انتهاء الجلسة')
       setWarnedUrgent(true)
+      toast.warn('تبقّى 30 ثانية على انتهاء الجلسة')
+      return
     }
-    if (!isUrgent) setWarnedUrgent(false)
+
+    if (!isUrgent && warnedUrgent) {
+      setWarnedUrgent(false)
+    }
   }, [isUrgent, warnedUrgent, toast])
 
   useEffect(() => {
     if (isExpired && !warnedExpired) {
+      setWarnedExpired(true)
       setText('')
       toast.info('انتهى وقت الجلسة — تم إغلاق الإرسال')
-      setWarnedExpired(true)
+      return
     }
-    if (!isExpired) setWarnedExpired(false)
+
+    if (!isExpired && warnedExpired) {
+      setWarnedExpired(false)
+    }
   }, [isExpired, warnedExpired, toast])
 
   async function handleSend() {
