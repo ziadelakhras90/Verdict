@@ -78,9 +78,9 @@ export default function Session() {
   const [roleCard, setRoleCard] = useState<RoleCard | null>(null)
   const [showCase, setShowCase] = useState(false)
   const [showRole, setShowRole] = useState(false)
-  const [warnedUrgent, setWarnedUrgent] = useState(false)
-  const [warnedExpired, setWarnedExpired] = useState(false)
   const lastSessionRef = useRef<number | null>(null)
+  const warnedUrgentRef = useRef(false)
+  const warnedExpiredRef = useRef(false)
 
   const me = useMemo(
     () => players.find((p) => p.player_id === currentUserId),
@@ -131,28 +131,34 @@ export default function Session() {
       setEvType('statement')
       setShowCase(false)
       setShowRole(false)
-      setWarnedUrgent(false)
-      setWarnedExpired(false)
+      warnedUrgentRef.current = false
+      warnedExpiredRef.current = false
       lastSessionRef.current = room.current_session
     }
   }, [room])
 
   useEffect(() => {
-    if (isUrgent && !warnedUrgent) {
-      setWarnedUrgent(true)
+    if (isUrgent && !warnedUrgentRef.current) {
+      warnedUrgentRef.current = true
       toast.warn('تبقّى 30 ثانية على انتهاء الجلسة')
     }
-    if (!isUrgent && warnedUrgent) setWarnedUrgent(false)
-  }, [isUrgent, warnedUrgent, toast])
+
+    if (!isUrgent) {
+      warnedUrgentRef.current = false
+    }
+  }, [isUrgent, toast])
 
   useEffect(() => {
-    if (isExpired && !warnedExpired) {
-      setWarnedExpired(true)
+    if (isExpired && !warnedExpiredRef.current) {
+      warnedExpiredRef.current = true
       setText('')
       toast.info('انتهى وقت الجلسة — تم إغلاق الإرسال')
     }
-    if (!isExpired && warnedExpired) setWarnedExpired(false)
-  }, [isExpired, warnedExpired, toast])
+
+    if (!isExpired) {
+      warnedExpiredRef.current = false
+    }
+  }, [isExpired, toast])
 
   async function handleSend() {
     if (!roomId || !room || sending) return

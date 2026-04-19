@@ -12,7 +12,8 @@ const STYLES = {
 const ICONS = { info: 'ℹ️', success: '✓', error: '✗', warn: '⚠️' }
 
 export function ToastContainer() {
-  const { toasts, remove } = useToastStore()
+  const toasts = useToastStore((s) => s.toasts)
+  const remove = useToastStore((s) => s.remove)
   if (!toasts.length) return null
 
   return (
