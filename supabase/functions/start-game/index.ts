@@ -18,6 +18,7 @@ type RoleCardRow = {
   role: string
   private_info: string
   win_condition: string
+  hints?: Record<string, unknown> | null
 }
 
 function json(body: unknown, status = 200) {
@@ -34,6 +35,22 @@ function shuffle<T>(items: T[]): T[] {
     ;[copy[i], copy[j]] = [copy[j], copy[i]]
   }
   return copy
+}
+
+function enrichPrivateInfo(privateInfo: string, hints: Record<string, unknown> | null | undefined): string {
+  if (!hints || typeof hints !== 'object' || Array.isArray(hints)) return privateInfo
+
+  const hintLines = Object.entries(hints)
+    .map(([key, value]) => {
+      if (typeof value !== 'string' || !value.trim()) return null
+      const cleanKey = key.replace(/_/g, ' ').trim()
+      return `- ${cleanKey}: ${value.trim()}`
+    })
+    .filter((line): line is string => Boolean(line))
+
+  if (hintLines.length === 0) return privateInfo
+
+  return `${privateInfo}\n\nأوراق تساعدك في النقاش:\n${hintLines.join('\n')}`
 }
 
 Deno.serve(async (req: Request) => {
@@ -116,7 +133,7 @@ Deno.serve(async (req: Request) => {
     for (const candidate of shuffle(cases)) {
       const { data: roleCards, error: cardsErr } = await admin
         .from('case_role_cards')
-        .select('role, private_info, win_condition')
+        .select('role, private_info, win_condition, hints')
         .eq('case_id', candidate.id)
         .returns<RoleCardRow[]>()
 
@@ -139,7 +156,7 @@ Deno.serve(async (req: Request) => {
       room_id: roomId,
       player_id: playerId,
       role: shuffledRoles[index].role,
-      private_info: shuffledRoles[index].private_info,
+      private_info: enrichPrivateInfo(shuffledRoles[index].private_info, shuffledRoles[index].hints),
       win_condition: shuffledRoles[index].win_condition,
       knows_truth: ['defendant', 'defense_attorney'].includes(shuffledRoles[index].role),
     }))

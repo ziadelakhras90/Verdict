@@ -1,5 +1,5 @@
 // supabase/functions/advance-session/index.ts
-// Advance the room from session 1 -> 2 -> 3 -> verdict.
+// Advance the room from session 1 -> 2 -> 3 -> verdict, or jump directly to verdict.
 // Only the judge can do this.
 // @ts-ignore deno imports
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -36,6 +36,7 @@ Deno.serve(async (req: Request) => {
     const roomId = body.roomId ?? body.room_id ?? body.id
     const requesterId = body.requesterId ?? body.requester_id ?? body.playerId ?? null
     const expectedSession = Number(body.expectedSession ?? body.expected_session ?? NaN)
+    const target = body.target === 'verdict' ? 'verdict' : 'next'
 
     if (!roomId) {
       return new Response(JSON.stringify({
@@ -127,12 +128,20 @@ Deno.serve(async (req: Request) => {
         message: 'Session already advanced by a newer request',
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
+
     let nextStatus = 'in_session'
     let nextSession = currentSession
     let nextEndsAt: string | null = null
     let systemMessage = ''
 
-    if (currentSession < 3) {
+    if (target === 'verdict') {
+      nextStatus = 'verdict'
+      nextSession = Math.min(Math.max(currentSession, 1), 3)
+      nextEndsAt = null
+      systemMessage = currentSession >= 3
+        ? 'انتهت جلسات الاستماع. انتقلت اللعبة إلى مرحلة الحكم.'
+        : 'أنهى القاضي الجلسات مبكرًا وانتقلت اللعبة مباشرة إلى مرحلة الحكم.'
+    } else if (currentSession < 3) {
       nextSession = currentSession + 1
       nextStatus = 'in_session'
       nextEndsAt = new Date(Date.now() + room.session_duration_seconds * 1000).toISOString()
@@ -228,6 +237,7 @@ Deno.serve(async (req: Request) => {
       room: updatedRoom,
       moved_to: nextStatus === 'verdict' ? 'verdict' : `session_${nextSession}`,
       message: systemMessage,
+      target,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

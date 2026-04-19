@@ -1,13 +1,13 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { GameEvent, EventType } from '@/lib/types'
 import { cn, timeAgo } from '@/lib/utils'
 import { Avatar } from '@/components/ui'
 
 const EVENT_STYLE: Record<EventType, { label: string; borderColor: string }> = {
-  statement: { label: 'إفادة',    borderColor: 'border-gold/30' },
-  question:  { label: 'سؤال',    borderColor: 'border-blue-500/40' },
-  objection: { label: 'اعتراض',  borderColor: 'border-blood/50' },
-  system:    { label: 'نظام',    borderColor: 'border-ink-600/40' },
+  statement: { label: 'إفادة', borderColor: 'border-gold/30' },
+  question: { label: 'سؤال', borderColor: 'border-blue-500/40' },
+  objection: { label: 'اعتراض', borderColor: 'border-blood/50' },
+  system: { label: 'نظام', borderColor: 'border-ink-600/40' },
 }
 
 interface EventFeedProps {
@@ -22,7 +22,10 @@ export function EventFeed({ events, currentSession }: EventFeedProps) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [events.length])
 
-  const sessionEvents = events.filter(e => e.session_num === currentSession)
+  const sessionEvents = useMemo(
+    () => events.filter((event) => event.session_num === currentSession),
+    [events, currentSession]
+  )
 
   if (sessionEvents.length === 0) {
     return (
@@ -66,7 +69,7 @@ export function EventFeed({ events, currentSession }: EventFeedProps) {
                   <span className="text-xs text-ink-600">{timeAgo(event.created_at)}</span>
                 </div>
               </div>
-              <p className="text-sm text-parch-200 leading-relaxed">{event.content}</p>
+              <p className="text-sm text-parch-200 leading-relaxed whitespace-pre-wrap">{event.content}</p>
             </div>
           </div>
         )

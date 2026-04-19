@@ -94,7 +94,7 @@ export default function RoleCardPage() {
 
           {/* Role card */}
           {card ? (
-            <RoleCardDisplay card={card} />
+            <RoleCardDisplay card={card} caseTitle={caseInfo?.title} caseInfo={caseInfo} />
           ) : (
             <Card className="text-center py-10">
               <Spinner size={24} />

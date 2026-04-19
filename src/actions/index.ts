@@ -86,11 +86,11 @@ export async function beginSession(roomId: string, expectedStatus: 'starting' | 
 }
 
 // ─── advanceSession → Edge Function ───────────────
-export async function advanceSession(roomId: string, expectedSession?: number) {
+export async function advanceSession(roomId: string, expectedSession?: number, target: 'next' | 'verdict' = 'next') {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
 
-  return callEdgeFunction('advance-session', { roomId, requesterId: user.id, expectedSession })
+  return callEdgeFunction('advance-session', { roomId, requesterId: user.id, expectedSession, target })
 }
 
 // ─── submitEvent ──────────────────────────────────

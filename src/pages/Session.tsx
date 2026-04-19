@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useParams } from 'react-router-dom'
 import { useRoom } from '@/hooks/useRoom'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useRoomStore } from '@/stores/roomStore'
@@ -22,45 +22,88 @@ import { SessionExpiredError } from '@/lib/sessionEvent'
 
 type EvType = 'statement' | 'question' | 'objection'
 
-const EV_OPTIONS: { type: EvType; label: string; icon: string }[] = [
-  { type: 'statement', label: 'إفادة',   icon: '🗣️' },
-  { type: 'question',  label: 'سؤال',   icon: '❓' },
-  { type: 'objection', label: 'اعتراض', icon: '✋' },
+type EventMeta = {
+  type: EvType
+  label: string
+  icon: string
+  helper: string
+  placeholder: string
+  sendLabel: string
+}
+
+const EV_OPTIONS: EventMeta[] = [
+  {
+    type: 'statement',
+    label: 'إفادة',
+    icon: '🗣️',
+    helper: 'استخدمها لعرض روايتك، أليبيك، أو معلومة ترى أنها تغيّر فهم القضية.',
+    placeholder: 'قدّم إفادتك: ماذا حدث؟ أين كنت؟ وما الذي تريد تثبيته أمام القاضي؟',
+    sendLabel: 'إرسال الإفادة',
+  },
+  {
+    type: 'question',
+    label: 'سؤال',
+    icon: '❓',
+    helper: 'استخدمها لتوجيه سؤال مباشر يكشف تناقضًا أو يجبر لاعبًا على توضيح تفصيلة مهمة.',
+    placeholder: 'وجّه سؤالًا مباشرًا: من تسأل؟ وما النقطة التي تريد كشفها؟',
+    sendLabel: 'طرح السؤال',
+  },
+  {
+    type: 'objection',
+    label: 'اعتراض',
+    icon: '✋',
+    helper: 'استخدمه للطعن في تصريح سابق: ما العبارة التي تعترض عليها، ولماذا تراها غير دقيقة؟',
+    placeholder: 'اكتب اعتراضك: على أي تصريح تعترض؟ وما السبب أو التناقض الذي تشير إليه؟',
+    sendLabel: 'تسجيل الاعتراض',
+  },
 ]
 
 export default function Session() {
   const { id: roomId } = useParams<{ id: string }>()
-  const navigate       = useNavigate()
-  const currentUserId  = useCurrentUser()
-  const toast          = useToast()
+  const currentUserId = useCurrentUser()
+  const toast = useToast()
   useRoom(roomId)
   useRoomGuard(roomId, 'in_session', 'session')
 
-  const room        = useRoomStore(s => s.room)
-  const players     = useRoomStore(s => s.players)
-  const events      = useRoomStore(s => s.events)
+  const room = useRoomStore(s => s.room)
+  const players = useRoomStore(s => s.players)
+  const events = useRoomStore(s => s.events)
   const isConnected = useRoomStore(s => s.isConnected)
   const { isExpired, isUrgent } = useSessionTimer()
 
-  const [text, setText]           = useState('')
-  const [evType, setEvType]       = useState<EvType>('statement')
-  const [sending, setSending]     = useState(false)
-  const [caseInfo, setCaseInfo]   = useState<PublicCaseInfo | null>(null)
-  const [roleCard, setRoleCard]   = useState<RoleCard | null>(null)
-  const [showCase, setShowCase]   = useState(false)
-  const [showRole, setShowRole]   = useState(false)
+  const [text, setText] = useState('')
+  const [evType, setEvType] = useState<EvType>('statement')
+  const [sending, setSending] = useState(false)
+  const [caseInfo, setCaseInfo] = useState<PublicCaseInfo | null>(null)
+  const [roleCard, setRoleCard] = useState<RoleCard | null>(null)
+  const [showCase, setShowCase] = useState(false)
+  const [showRole, setShowRole] = useState(false)
   const [warnedUrgent, setWarnedUrgent] = useState(false)
   const [warnedExpired, setWarnedExpired] = useState(false)
   const lastSessionRef = useRef<number | null>(null)
 
-  const me      = players.find(p => p.player_id === currentUserId)
-  const isJudge = me?.role === 'judge'
+  const me = useMemo(
+    () => players.find((p) => p.player_id === currentUserId),
+    [players, currentUserId]
+  )
   const charLeft = 300 - text.length
-  const canSend = !!roomId && !!room && !sending && !isExpired && text.trim().length > 0
-
-  useEffect(() => {
-    if (isJudge && roomId) navigate(`/room/${roomId}/judge`, { replace: true })
-  }, [isJudge, roomId, navigate])
+  const selectedMeta = useMemo(
+    () => EV_OPTIONS.find((opt) => opt.type === evType) ?? EV_OPTIONS[0],
+    [evType]
+  )
+  const sessionStats = useMemo(() => {
+    const currentSession = room?.current_session
+    const counts: Record<EvType, number> = { statement: 0, question: 0, objection: 0 }
+    if (!currentSession) return counts
+    for (const event of events) {
+      if (event.session_num !== currentSession || event.event_type === 'system') continue
+      if (event.event_type in counts) {
+        counts[event.event_type as EvType] += 1
+      }
+    }
+    return counts
+  }, [events, room?.current_session])
+  const canSend = Boolean(roomId && room && !sending && !isExpired && text.trim().length > 0)
 
   useEffect(() => {
     if (!roomId || !currentUserId) return
@@ -98,12 +141,8 @@ export default function Session() {
     if (isUrgent && !warnedUrgent) {
       setWarnedUrgent(true)
       toast.warn('تبقّى 30 ثانية على انتهاء الجلسة')
-      return
     }
-
-    if (!isUrgent && warnedUrgent) {
-      setWarnedUrgent(false)
-    }
+    if (!isUrgent && warnedUrgent) setWarnedUrgent(false)
   }, [isUrgent, warnedUrgent, toast])
 
   useEffect(() => {
@@ -111,12 +150,8 @@ export default function Session() {
       setWarnedExpired(true)
       setText('')
       toast.info('انتهى وقت الجلسة — تم إغلاق الإرسال')
-      return
     }
-
-    if (!isExpired && warnedExpired) {
-      setWarnedExpired(false)
-    }
+    if (!isExpired && warnedExpired) setWarnedExpired(false)
   }, [isExpired, warnedExpired, toast])
 
   async function handleSend() {
@@ -190,7 +225,7 @@ export default function Session() {
 
         {(showRole && roleCard) && (
           <div className="border-b border-gold/10 px-4 py-3 bg-ink-900/80 animate-fade-up">
-            <RoleSummaryPanel card={roleCard} compact />
+            <RoleSummaryPanel card={roleCard} caseInfo={caseInfo} compact />
           </div>
         )}
 
@@ -201,11 +236,16 @@ export default function Session() {
         )}
 
         {!showRole && roleCard && (
-          <div className="px-4 pt-3">
+          <div className="px-4 pt-3 space-y-2">
             <div className="rounded-xl border border-gold/10 bg-ink-900/50 px-3 py-2 text-xs text-parch-300 flex items-center justify-between gap-3">
-              <span>تذكير: أنت <strong className="text-gold">{ROLE_LABELS[roleCard.role]}</strong> — تحدّث من منظور دورك.</span>
-              <button onClick={() => setShowRole(true)} className="text-gold hover:text-gold/80 whitespace-nowrap">عرض البطاقة</button>
+              <span>تذكير: أنت <strong className="text-gold">{ROLE_LABELS[roleCard.role]}</strong> — تحدّث من منظور دورك وليس من الوصف العام فقط.</span>
+              <button onClick={() => setShowRole(true)} className="text-gold hover:text-gold/80 whitespace-nowrap">عرض السيناريو</button>
             </div>
+            {caseInfo?.public_facts?.length ? (
+              <div className="rounded-xl border border-ink-800 bg-ink-900/40 px-3 py-2 text-xs text-ink-400">
+                ركّز في المناقشة على: <span className="text-parch-300">{caseInfo.public_facts.slice(0, 2).join(' • ')}</span>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -216,7 +256,7 @@ export default function Session() {
         {isExpired && (
           <div className="px-4 py-2 bg-ink-800/80 border-t border-ink-700/40 text-center">
             <p className="text-xs text-ink-500 animate-pulse">
-              انتهى وقت الجلسة — تم إغلاق الإرسال، انتظر تثبيت الانتقال للجلسة التالية
+              انتهى وقت الجلسة — تم إغلاق الإرسال، انتظر قرار القاضي بالانتقال للجلسة التالية أو الحكم
             </p>
           </div>
         )}
@@ -225,14 +265,14 @@ export default function Session() {
           'border-t p-4 space-y-3 transition-colors duration-300',
           isExpired ? 'border-ink-800 bg-ink-900/60' : 'border-gold/10 bg-ink-900/80'
         )}>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {EV_OPTIONS.map(opt => (
               <button
                 key={opt.type}
                 onClick={() => !isExpired && setEvType(opt.type)}
                 disabled={isExpired}
                 className={cn(
-                  'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-body',
+                  'flex flex-col items-center justify-center gap-1 py-2 text-xs font-body',
                   'border rounded-lg transition-all duration-150',
                   isExpired && 'opacity-40 cursor-not-allowed',
                   evType === opt.type
@@ -242,8 +282,20 @@ export default function Session() {
               >
                 <span>{opt.icon}</span>
                 <span>{opt.label}</span>
+                <span className="text-[10px] text-ink-500">{sessionStats[opt.type]}</span>
               </button>
             ))}
+          </div>
+
+          <div className="rounded-xl border border-ink-800 bg-ink-900/50 px-3 py-2.5 space-y-1">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-gold flex items-center gap-1.5">
+                <span>{selectedMeta.icon}</span>
+                <span>{selectedMeta.label}</span>
+              </span>
+              <span className="text-ink-500">في هذه الجلسة: {sessionStats[selectedMeta.type]}</span>
+            </div>
+            <p className="text-xs text-parch-300 leading-6">{selectedMeta.helper}</p>
           </div>
 
           <div className="relative">
@@ -251,9 +303,9 @@ export default function Session() {
               value={text}
               onChange={e => setText(e.target.value.slice(0, 300))}
               onKeyDown={onKeyDown}
-              placeholder={isExpired ? 'الجلسة انتهت' : 'اكتب هنا... (Enter للإرسال، Shift+Enter لسطر جديد)'}
+              placeholder={isExpired ? 'الجلسة انتهت' : selectedMeta.placeholder}
               disabled={isExpired || sending}
-              rows={2}
+              rows={3}
               className={cn(
                 'w-full bg-ink-800 border text-parch-100 px-3 py-2.5 rounded-xl',
                 'font-body text-sm placeholder:text-ink-600 focus:outline-none resize-none',
@@ -280,7 +332,7 @@ export default function Session() {
             disabled={!canSend}
             className="w-full"
           >
-            {isExpired ? 'انتهت الجلسة' : `إرسال ${evType === 'objection' ? '✋' : evType === 'question' ? '❓' : '🗣️'}`}
+            {isExpired ? 'انتهت الجلسة' : `${selectedMeta.icon} ${selectedMeta.sendLabel}`}
           </Button>
         </div>
       </div>
